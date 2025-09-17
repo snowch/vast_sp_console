@@ -54,8 +54,8 @@ const Dashboard = () => {
       color: 'bg-green-100 text-green-600'
     },
     {
-      title: 'Kafka',
-      description: 'Managed Apache Kafka service for real-time data streaming and event-driven architectures.',
+      title: 'Event Streaming (Kafka API)',
+      description: 'Managed Apache Kafka API for real-time data streaming and event-driven architectures.',
       icon: MessageSquare,
       action: () => console.log('Kafka clicked'),
       category: 'Messaging',

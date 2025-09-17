@@ -19,7 +19,7 @@ const Layout = ({ children }) => {
 
   const navigation = [
     { name: 'Home', href: '/', icon: Home },
-    { name: 'Database Schemas', href: '/schemas', icon: Database },
+    { name: 'Database', href: '/schemas', icon: Database },
   ];
 
   const handleLogout = async () => {
