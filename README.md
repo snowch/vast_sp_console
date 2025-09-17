@@ -1,229 +1,314 @@
 # VAST Services MVP
 
-A modern web interface for managing VAST Data Platform services, with initial focus on database schema management.
+A modern web application for managing VAST Data Platform services with a focus on database schema management and cloud service orchestration.
 
 ## Overview
 
-This MVP provides a React-based frontend and Node.js backend for managing VAST Data Platform resources. It authenticates directly with VAST clusters and provides a user-friendly interface for database operations.
+VAST Services MVP provides an intuitive interface for managing VAST Data Platform resources through a React frontend and Node.js backend. The application enables direct authentication with VAST clusters and offers streamlined management of database schemas, with plans to expand to additional cloud services.
 
 ## Features
 
-- **VAST Authentication**: Secure login to VAST clusters with JWT token management
-- **Database Schema Management**: Create and manage database schemas via VAST Views
-- **Protocol Support**: Configure views with DATABASE, S3, NFS, and SMB protocols
-- **Real-time Integration**: Direct VAST API communication
-- **Responsive UI**: Modern React interface with Tailwind CSS
-- **Error Handling**: Comprehensive validation and error management
+### Current Features
+- **Secure VAST Authentication** - Direct JWT-based authentication with VAST clusters
+- **Database Schema Management** - Create and manage database schemas via VAST Views
+- **Multi-Protocol Support** - Configure views with DATABASE, S3, NFS, and SMB protocols  
+- **Real-time Integration** - Live communication with VAST APIs
+- **Modern UI** - Responsive React interface built with Tailwind CSS
+- **Comprehensive Error Handling** - Robust validation and error management
+
+### Planned Services
+- Vector Database management
+- Serverless Functions platform
+- Virtual Server deployment
+- Kafka messaging services
+- Document RAG processing
+- Container Services
+- S3-compatible storage management
 
 ## Architecture
 
 ```
 vast-services-mvp/
-├── frontend/          # React application
+├── backend/                 # Node.js/Express API server
 │   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Application pages
-│   │   ├── services/      # API service layer
-│   │   ├── contexts/      # React context providers
-│   │   └── hooks/         # Custom React hooks
-│   └── public/
-└── backend/           # Node.js/Express API
-    └── src/
-        ├── controllers/   # Route handlers
-        ├── services/      # External integrations
-        ├── middleware/    # Express middleware
-        └── routes/        # API route definitions
+│   │   ├── controllers/     # Request handlers and business logic
+│   │   ├── services/        # External API integrations (VAST, Database)
+│   │   ├── middleware/      # Authentication, validation, error handling
+│   │   ├── routes/          # API endpoint definitions
+│   │   └── server.js        # Application entry point
+│   └── package.json
+└── frontend/                # React application
+    ├── src/
+    │   ├── components/      # Reusable UI components
+    │   ├── pages/           # Application pages and views
+    │   ├── services/        # API client and service layers
+    │   ├── contexts/        # React context providers
+    │   ├── hooks/           # Custom React hooks
+    │   └── styles/          # Global styles and CSS
+    └── package.json
 ```
 
 ## Prerequisites
 
-- Node.js 16+ and npm
-- Access to a VAST Data cluster
-- VAST cluster credentials (IP, port, username, password)
+- **Node.js** 16.x or higher
+- **npm** 7.x or higher
+- **VAST Data Cluster** with API access
+- Valid VAST cluster credentials (host, port, username, password)
 
-## Installation
+## Quick Start
 
-1. **Clone and setup:**
-   ```bash
-   git clone <repository-url>
-   cd vast-services-mvp
-   ```
+### 1. Clone and Install
+```bash
+git clone <repository-url>
+cd vast-services-mvp
 
-2. **Install dependencies:**
-   ```bash
-   # Backend
-   cd backend
-   npm install
-   
-   # Frontend  
-   cd ../frontend
-   npm install
-   ```
+# Install backend dependencies
+cd backend
+npm install
 
-3. **Configure environment:**
-   ```bash
-   # Backend - create backend/.env
-   NODE_ENV=development
-   PORT=3001
-   JWT_SECRET=your-secure-secret-key
-   JWT_EXPIRES_IN=8h
-   FRONTEND_URL=http://localhost:3000
-   
-   # Frontend - create frontend/.env
-   REACT_APP_API_URL=http://localhost:3001/api
-   ```
+# Install frontend dependencies
+cd ../frontend
+npm install
+```
 
-## Running the Application
+### 2. Configure Environment Variables
 
-Start both servers in separate terminals:
+**Backend Configuration** (`backend/.env`):
+```bash
+NODE_ENV=development
+PORT=3001
+JWT_SECRET=your-secure-secret-key-change-this
+JWT_EXPIRES_IN=8h
+FRONTEND_URL=http://localhost:3000
+```
 
-**Backend:**
+**Frontend Configuration** (`frontend/.env`):
+```bash
+REACT_APP_API_URL=http://localhost:3001/api
+```
+
+### 3. Start the Application
+
+**Terminal 1 - Backend:**
 ```bash
 cd backend
 npm run dev
 ```
 
-**Frontend:**
+**Terminal 2 - Frontend:**
 ```bash
 cd frontend
 npm start
 ```
 
-Access the application at `http://localhost:3000`
+### 4. Access the Application
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:3001/api
 
-## Usage
+## Usage Guide
 
-### Login
-1. Enter your VAST cluster details:
-   - **Host**: VAST cluster IP address
+### Initial Login
+1. Navigate to the login page
+2. Enter your VAST cluster information:
+   - **Host**: Your VAST cluster IP address
    - **Port**: API port (typically 443)
-   - **Username/Password**: VAST credentials
+   - **Username/Password**: Your VAST credentials
    - **Tenant**: Tenant name (default: "default")
+3. Click "Connect to VAST"
 
 ### Managing Database Schemas
-1. Navigate to "Database Schemas"
-2. Click "Create Schema" to add a new schema
-3. Configure:
-   - **Name**: Schema identifier
+1. From the dashboard, click "Database Schemas" or navigate to `/schemas`
+2. Click "Create Schema" to add a new database schema
+3. Configure the schema:
+   - **Name**: Unique schema identifier
    - **Path**: Filesystem path (auto-generated if empty)
-   - **Protocols**: Select DATABASE for database functionality
-   - **Description**: Optional description
+   - **Protocols**: Select protocols (DATABASE required for database functionality)
+4. Click "Create Schema"
 
-Schemas are implemented as VAST Views with DATABASE protocol enabled.
+The application creates VAST Views with DATABASE protocol enabled to implement database schemas.
 
-## API Endpoints
+## API Reference
 
-### Authentication
+### Authentication Endpoints
 - `POST /api/auth/login` - Authenticate with VAST cluster
-- `GET /api/auth/verify` - Verify JWT token
-- `POST /api/auth/logout` - Logout
+- `GET /api/auth/verify` - Verify current JWT token
+- `POST /api/auth/logout` - End user session
 
-### Schema Management
+### Schema Management Endpoints
 - `GET /api/schemas` - List all database schemas
 - `POST /api/schemas` - Create new schema
-- `GET /api/schemas/:name` - Get schema details
+- `GET /api/schemas/:name` - Get specific schema details
 - `DELETE /api/schemas/:name` - Delete schema
 - `GET /api/schemas/:name/tables` - List tables in schema
 
-## VAST API Integration
+### Request/Response Examples
 
-The application integrates with these VAST endpoints:
-- `POST /token/` - Authentication
-- `GET /views/` - List views (schemas)
-- `POST /views/` - Create views
-- `GET /tenants/` - List tenants
+**Login Request:**
+```json
+POST /api/auth/login
+{
+  "vastHost": "10.143.11.204",
+  "vastPort": 443,
+  "username": "admin",
+  "password": "password",
+  "tenant": "default"
+}
+```
+
+**Create Schema Request:**
+```json
+POST /api/schemas
+{
+  "name": "analytics_db",
+  "path": "/analytics_db",
+  "protocols": ["DATABASE", "S3"],
+  "description": "Analytics database schema"
+}
+```
 
 ## Development
 
-### Adding New Services
+### Technology Stack
+- **Frontend**: React 18, React Router, React Query, Tailwind CSS
+- **Backend**: Node.js, Express, JWT, Axios
+- **Authentication**: JWT with VAST API integration
+- **State Management**: React Query for server state, React Context for auth
 
-1. **Backend**: Create service in `backend/src/services/`
-2. **Controller**: Add controller in `backend/src/controllers/`
-3. **Routes**: Define routes in `backend/src/routes/`
-4. **Frontend**: Create components and pages
-5. **Navigation**: Add to main menu
+### Development Scripts
+```bash
+# Backend
+npm run dev          # Start development server with nodemon
+npm start           # Start production server
 
-### Code Organization
+# Frontend  
+npm start           # Start development server
+npm run build       # Build for production
+npm test            # Run tests
+```
 
-- Keep components small and focused
-- Use React hooks for state management
-- Implement proper error boundaries
-- Follow existing patterns for API integration
-- Add comprehensive error handling
+### Adding New Features
+1. **Backend Services**: Add to `backend/src/services/`
+2. **API Controllers**: Create in `backend/src/controllers/`
+3. **Routes**: Define in `backend/src/routes/`
+4. **Frontend Components**: Add to `frontend/src/components/`
+5. **Pages**: Create in `frontend/src/pages/`
 
-### Environment Variables
+### Code Style Guidelines
+- Use functional components with hooks in React
+- Implement proper error boundaries and loading states
+- Follow REST API conventions for backend endpoints
+- Use TypeScript-style JSDoc comments for better documentation
+- Maintain consistent error handling patterns
 
-**Backend:**
-- `NODE_ENV` - Environment (development/production)
-- `PORT` - Server port
-- `JWT_SECRET` - JWT signing secret
-- `FRONTEND_URL` - Frontend URL for CORS
+## Deployment
 
-**Frontend:**
-- `REACT_APP_API_URL` - Backend API base URL
+### Production Environment Variables
+```bash
+# Backend
+NODE_ENV=production
+JWT_SECRET=secure-production-secret
+FRONTEND_URL=https://your-domain.com
+
+# Frontend
+REACT_APP_API_URL=https://api.your-domain.com
+```
+
+### Build Commands
+```bash
+# Frontend production build
+cd frontend
+npm run build
+
+# Backend runs with same commands
+cd backend
+npm start
+```
+
+## Security Considerations
+
+- **JWT Security**: Tokens expire after 8 hours by default
+- **HTTPS Enforcement**: All VAST API communication uses HTTPS
+- **Input Validation**: Comprehensive validation on all endpoints
+- **Rate Limiting**: 100 requests per 15 minutes per IP
+- **CORS Configuration**: Restricted to configured frontend URL
+- **SSL Verification**: Disabled for development (configure for production)
 
 ## Troubleshooting
 
 ### Common Issues
 
-**Authentication Failures:**
-- Verify VAST cluster connectivity
-- Check IP address and port
-- Confirm credentials are correct
-- Ensure tenant exists
+**Connection Failed:**
+- Verify VAST cluster IP and port accessibility
+- Check firewall settings and network connectivity
+- Ensure VAST API service is running
+
+**Authentication Errors:**
+- Confirm username and password are correct
+- Verify tenant exists on the VAST cluster
+- Check if user has necessary permissions
 
 **CORS Errors:**
-- Check `FRONTEND_URL` in backend `.env`
-- Verify both servers are running
+- Ensure `FRONTEND_URL` is correctly set in backend `.env`
+- Verify both servers are running on expected ports
 
-**Module Not Found:**
-- Run `npm install` in both directories
-- Check file paths and imports
+**Development Issues:**
+- Run `npm install` in both backend and frontend directories
+- Check Node.js version compatibility
+- Ensure environment variables are properly configured
 
-**Port Conflicts:**
-- Change `PORT` in backend `.env`
-- Update `REACT_APP_API_URL` accordingly
-
-### API Testing
-
-Test VAST connectivity directly:
+### Debug Mode
+Enable debug logging by setting:
 ```bash
-curl -k https://your-vast-host:443/api/
+NODE_ENV=development
 ```
 
-## Security Considerations
+### Health Checks
+- **Backend Health**: http://localhost:3001/health
+- **Frontend**: Check browser console for errors
 
-- JWT tokens expire after 8 hours
-- HTTPS enforced for VAST communication
-- SSL certificate validation disabled for development
-- Input validation on all endpoints
-- Rate limiting implemented
+## Roadmap
 
-## Future Enhancements
+### Phase 1 (Current)
+- ✅ VAST authentication and connection
+- ✅ Database schema management
+- ✅ Basic dashboard and navigation
 
-- [ ] Table management interface
-- [ ] Vector database integration
+### Phase 2 (Planned)
+- [ ] Vector Database integration and management
+- [ ] Table management interface with CRUD operations
+- [ ] Advanced query interface for database operations
 - [ ] S3 bucket management
-- [ ] Kafka topic management
-- [ ] User management
-- [ ] Monitoring dashboards
-- [ ] Advanced query interface
-- [ ] Role-based access control
+
+### Phase 3 (Future)
+- [ ] Serverless Functions platform
+- [ ] Virtual Server deployment and management
+- [ ] Kafka topic and stream management
+- [ ] Container Services orchestration
+- [ ] Monitoring and analytics dashboards
+- [ ] Role-based access control and user management
 
 ## Contributing
 
-1. Follow existing code patterns
-2. Add error handling for new features
-3. Update documentation for changes
-4. Test with real VAST clusters
-5. Keep components modular and reusable
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow existing code patterns and conventions
+4. Add comprehensive error handling for new features
+5. Update documentation for any API changes
+6. Test with real VAST clusters when possible
+7. Commit changes (`git commit -m 'Add amazing feature'`)
+8. Push to branch (`git push origin feature/amazing-feature`)
+9. Open a Pull Request
 
 ## License
 
-[Add your license information]
+Apache-2.0
 
 ## Support
 
-For VAST Data Platform documentation: https://vastdata.com/documentation/
+- **VAST Data Platform Documentation**: https://vastdata.com/documentation/
+- **Issues**: [Add issue tracker URL]
+- **Contact**: [Add contact information]
 
-For issues with this MVP: [Add contact information or issue tracker]
+---
+
+*Built with ❤️ for the VAST Data Platform ecosystem*
