@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { Plus, Database, Calendar, Trash2, Eye } from 'lucide-react';
+import { Plus, Database, Calendar, Trash2, Eye, Server, AlertCircle } from 'lucide-react';
 import Layout from '../components/Layout';
 import LoadingSpinner from '../components/LoadingSpinner';
 import CreateSchemaModal from '../components/CreateSchemaModal';
@@ -11,6 +11,18 @@ const SchemaManager = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedSchema, setSelectedSchema] = useState(null);
   const queryClient = useQueryClient();
+
+  // Fetch connection info
+  const { data: connectionInfo } = useQuery(
+    'connection-info',
+    schemaService.getConnectionInfo,
+    {
+      refetchInterval: 30000, // Refresh every 30 seconds
+      onError: (err) => {
+        console.error('Failed to fetch connection info:', err);
+      }
+    }
+  );
 
   // Fetch schemas
   const { data: schemas, isLoading, error } = useQuery(
@@ -41,7 +53,7 @@ const SchemaManager = () => {
   const deleteMutation = useMutation(schemaService.deleteSchema, {
     onSuccess: () => {
       queryClient.invalidateQueries('schemas');
-      toast.success('Schema deletion initiated');
+      toast.success('Schema deleted successfully');
     },
     onError: (err) => {
       console.error('Failed to delete schema:', err);
@@ -54,7 +66,7 @@ const SchemaManager = () => {
   };
 
   const handleDeleteSchema = (schemaName) => {
-    if (window.confirm(`Are you sure you want to delete schema "${schemaName}"?`)) {
+    if (window.confirm(`Are you sure you want to delete schema "${schemaName}"? This action cannot be undone.`)) {
       deleteMutation.mutate(schemaName);
     }
   };
@@ -71,10 +83,11 @@ const SchemaManager = () => {
     return (
       <Layout>
         <div className="text-center py-12">
-          <p className="text-red-600">Failed to load schemas</p>
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <p className="text-red-600 mb-4">Failed to load schemas</p>
           <button 
             onClick={() => queryClient.invalidateQueries('schemas')}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Retry
           </button>
@@ -82,6 +95,8 @@ const SchemaManager = () => {
       </Layout>
     );
   }
+
+  const isConnected = connectionInfo?.connection?.status === 'connected';
 
   return (
     <Layout>
@@ -94,12 +109,48 @@ const SchemaManager = () => {
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            disabled={!isConnected}
+            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="w-4 h-4" />
             <span>Create Schema</span>
           </button>
         </div>
+
+        {/* Connection Status */}
+        {connectionInfo && (
+          <div className={`p-4 rounded-lg border ${
+            isConnected 
+              ? 'bg-green-50 border-green-200' 
+              : 'bg-red-50 border-red-200'
+          }`}>
+            <div className="flex items-center space-x-3">
+              <Server className={`w-5 h-5 ${
+                isConnected ? 'text-green-600' : 'text-red-600'
+              }`} />
+              <div className="flex-1">
+                <div className="flex items-center space-x-2">
+                  <span className="font-medium text-gray-900">VAST Database Connection</span>
+                  <div className={`w-2 h-2 rounded-full ${
+                    isConnected ? 'bg-green-500' : 'bg-red-500'
+                  }`}></div>
+                </div>
+                <div className="text-sm text-gray-600 mt-1">
+                  <strong>Endpoint:</strong> {connectionInfo.connection?.endpoint} | 
+                  <strong> Bucket:</strong> {connectionInfo.connection?.bucket}
+                </div>
+              </div>
+              {!isConnected && (
+                <button
+                  onClick={() => queryClient.invalidateQueries('connection-info')}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  Retry Connection
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Schema Grid */}
         {schemas?.schemas?.length > 0 ? (
@@ -131,6 +182,7 @@ const SchemaManager = () => {
                       onClick={() => handleDeleteSchema(schema.name)}
                       className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                       title="Delete Schema"
+                      disabled={deleteMutation.isLoading}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -144,7 +196,11 @@ const SchemaManager = () => {
                       {schema.protocols?.map((protocol) => (
                         <span
                           key={protocol}
-                          className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs"
+                          className={`px-2 py-1 rounded text-xs ${
+                            protocol === 'DATABASE' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-gray-100 text-gray-700'
+                          }`}
                         >
                           {protocol}
                         </span>
@@ -178,18 +234,25 @@ const SchemaManager = () => {
           <div className="text-center py-12">
             <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No schemas found</h3>
-            <p className="text-gray-600 mb-6">Create your first database schema to get started</p>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Create Schema
-            </button>
+            <p className="text-gray-600 mb-6">
+              {isConnected 
+                ? 'Create your first database schema to get started'
+                : 'Connect to VAST Database to manage schemas'
+              }
+            </p>
+            {isConnected && (
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Create Schema
+              </button>
+            )}
           </div>
         )}
 
         {/* Stats Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-6 border-t border-gray-200">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-6 border-t border-gray-200">
           <div className="text-center">
             <p className="text-2xl font-bold text-gray-900">{schemas?.schemas?.length || 0}</p>
             <p className="text-sm text-gray-600">Total Schemas</p>
@@ -201,7 +264,13 @@ const SchemaManager = () => {
             <p className="text-sm text-gray-600">Total Tables</p>
           </div>
           <div className="text-center">
-            <p className="text-2xl font-bold text-green-600">Online</p>
+            <p className="text-2xl font-bold text-gray-900">{connectionInfo?.connection?.bucket || '-'}</p>
+            <p className="text-sm text-gray-600">Active Bucket</p>
+          </div>
+          <div className="text-center">
+            <p className={`text-2xl font-bold ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+              {isConnected ? 'Online' : 'Offline'}
+            </p>
             <p className="text-sm text-gray-600">Database Status</p>
           </div>
         </div>
@@ -213,6 +282,7 @@ const SchemaManager = () => {
           onClose={() => setShowCreateModal(false)}
           onCreate={handleCreateSchema}
           isLoading={createMutation.isLoading}
+          connectionInfo={connectionInfo?.connection}
         />
       )}
 
@@ -226,7 +296,7 @@ const SchemaManager = () => {
                 onClick={() => setSelectedSchema(null)}
                 className="text-gray-400 hover:text-gray-600"
               >
-                ×
+                <X className="w-5 h-5" />
               </button>
             </div>
             
@@ -239,6 +309,11 @@ const SchemaManager = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Path</label>
                 <p className="mt-1 text-sm text-gray-900">{selectedSchema.path}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Bucket</label>
+                <p className="mt-1 text-sm text-gray-900">{selectedSchema.bucket}</p>
               </div>
               
               <div>
@@ -260,8 +335,11 @@ const SchemaManager = () => {
                   <label className="block text-sm font-medium text-gray-700">Tables</label>
                   <div className="mt-1 space-y-2">
                     {selectedSchema.tables.map((table, index) => (
-                      <div key={index} className="text-sm text-gray-900">
-                        • {table.name || table}
+                      <div key={index} className="text-sm text-gray-900 flex items-center justify-between p-2 bg-gray-50 rounded">
+                        <span>• {table.name || table}</span>
+                        {table.rows !== undefined && (
+                          <span className="text-xs text-gray-500">{table.rows} rows</span>
+                        )}
                       </div>
                     ))}
                   </div>

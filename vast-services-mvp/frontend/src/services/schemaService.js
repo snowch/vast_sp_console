@@ -1,13 +1,21 @@
 import { apiClient } from './apiClient';
 
 class SchemaService {
+  async getConnectionInfo() {
+    const response = await apiClient.get('/schemas/connection');
+    return response.data;
+  }
+
   async listSchemas() {
     const response = await apiClient.get('/schemas');
     return response.data;
   }
 
   async createSchema(schemaData) {
-    const response = await apiClient.post('/schemas', schemaData);
+    const response = await apiClient.post('/schemas', {
+      name: schemaData.name,
+      description: schemaData.description
+    });
     return response.data;
   }
 
@@ -18,6 +26,16 @@ class SchemaService {
 
   async deleteSchema(schemaName) {
     const response = await apiClient.delete(`/schemas/${schemaName}`);
+    return response.data;
+  }
+
+  async createTable(schemaName, tableData) {
+    const response = await apiClient.post(`/schemas/${schemaName}/tables`, tableData);
+    return response.data;
+  }
+
+  async listTables(schemaName) {
+    const response = await apiClient.get(`/schemas/${schemaName}/tables`);
     return response.data;
   }
 }

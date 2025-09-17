@@ -1,36 +1,22 @@
-const vastService = require('../services/vastService');
-const databaseService = require('../services/databaseService');
+const vastDbService = require('../services/vastDbService');
 
 class SchemaController {
   async listSchemas(req, res, next) {
     try {
-      const { vastHost, vastPort, tenant } = req.user;
+      const result = await vastDbService.listSchemas();
       
-      // Get existing views that can serve as schemas
-      const viewsResult = await vastService.getViews(vastHost, vastPort, tenant);
-      
-      if (!viewsResult.success) {
+      if (!result.success) {
         return res.status(500).json({ 
           error: 'Failed to fetch schemas',
-          message: viewsResult.message 
+          message: result.message 
         });
       }
 
-      // Filter for database-enabled views
-      const schemas = viewsResult.data.results ? viewsResult.data.results
-        .filter(view => view.protocols && view.protocols.includes('DATABASE'))
-        .map(view => ({
-          name: view.bucket,
-          path: view.path,
-          protocols: view.protocols,
-          created: view.created,
-          id: view.id
-        })) : [];
-
       res.json({
         success: true,
-        schemas,
-        total: schemas.length
+        schemas: result.schemas,
+        total: result.total,
+        connection: vastDbService.getConnectionInfo()
       });
 
     } catch (error) {
@@ -41,51 +27,37 @@ class SchemaController {
 
   async createSchema(req, res, next) {
     try {
-      const { name, path, protocols, description } = req.body;
-      const { vastHost, vastPort, tenant, username } = req.user;
+      const { name, description } = req.body;
 
-      // Prepare view data for VAST API
-      const viewData = {
-        path,
-        bucket: name,
-        bucket_owner: username,
-        protocols: protocols || ['S3', 'DATABASE'],
-        create_dir: true,
-        policy_id: 1 // Default policy - should be fetched dynamically
-      };
-
-      // Create the view which serves as our schema
-      const createResult = await vastService.createView(vastHost, vastPort, tenant, viewData);
-      
-      if (!createResult.success) {
+      if (!name) {
         return res.status(400).json({
-          error: 'Failed to create schema',
-          message: createResult.message
+          error: 'Schema name is required'
         });
       }
 
-      // Initialize database connection for this schema
-      try {
-        await databaseService.initializeSchema({
-          vastHost,
-          vastPort,
-          username,
-          tenant,
-          bucketName: name
+      // Validate schema name
+      if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(name)) {
+        return res.status(400).json({
+          error: 'Invalid schema name. Must start with letter and contain only letters, numbers, and underscores.'
         });
-      } catch (dbError) {
-        console.warn('Database initialization failed (this is normal for new schemas):', dbError.message);
+      }
+
+      const result = await vastDbService.createSchema(name, {
+        description,
+        failIfExists: true
+      });
+      
+      if (!result.success) {
+        return res.status(400).json({
+          error: 'Failed to create schema',
+          message: result.message
+        });
       }
 
       res.status(201).json({
         success: true,
-        schema: {
-          name,
-          path,
-          protocols: viewData.protocols,
-          id: createResult.data.id
-        },
-        message: 'Schema created successfully'
+        schema: result.schema,
+        message: result.message
       });
 
     } catch (error) {
@@ -97,51 +69,19 @@ class SchemaController {
   async getSchema(req, res, next) {
     try {
       const { name } = req.params;
-      const { vastHost, vastPort, tenant } = req.user;
 
-      const viewsResult = await vastService.getViews(vastHost, vastPort, tenant);
+      const result = await vastDbService.getSchema(name);
       
-      if (!viewsResult.success) {
-        return res.status(500).json({ 
-          error: 'Failed to fetch schema',
-          message: viewsResult.message 
-        });
-      }
-
-      const schema = viewsResult.data.results ? viewsResult.data.results
-        .find(view => view.bucket === name && view.protocols.includes('DATABASE')) : null;
-
-      if (!schema) {
+      if (!result.success) {
         return res.status(404).json({ 
           error: 'Schema not found',
-          message: `Schema '${name}' does not exist` 
+          message: result.message 
         });
-      }
-
-      // Get database information if available
-      let tables = [];
-      try {
-        const tablesList = await databaseService.listTables({
-          vastHost,
-          vastPort,
-          tenant,
-          bucketName: name
-        });
-        tables = tablesList.tables || [];
-      } catch (dbError) {
-        console.warn('Failed to fetch tables:', dbError.message);
       }
 
       res.json({
         success: true,
-        schema: {
-          name: schema.bucket,
-          path: schema.path,
-          protocols: schema.protocols,
-          created: schema.created,
-          id: schema.id,
-          tables
-        }
+        schema: result.schema
       });
 
     } catch (error) {
@@ -154,12 +94,18 @@ class SchemaController {
     try {
       const { name } = req.params;
       
-      // In a real implementation, we'd delete the view via VAST API
-      // For now, return a placeholder response
+      const result = await vastDbService.deleteSchema(name);
+      
+      if (!result.success) {
+        return res.status(400).json({
+          error: 'Failed to delete schema',
+          message: result.message
+        });
+      }
+
       res.json({
         success: true,
-        message: `Schema '${name}' deletion initiated`,
-        note: 'Schema deletion requires additional VAST API endpoints'
+        message: result.message
       });
 
     } catch (error) {
@@ -171,17 +117,22 @@ class SchemaController {
   async createTable(req, res, next) {
     try {
       const { name: schemaName } = req.params;
-      const { tableName, columns } = req.body;
-      const { vastHost, vastPort, tenant, username } = req.user;
+      const { tableName, columns = [] } = req.body;
 
-      const result = await databaseService.createTable({
-        vastHost,
-        vastPort,
-        tenant,
-        bucketName: schemaName,
-        tableName,
-        columns: columns || []
-      });
+      if (!tableName) {
+        return res.status(400).json({
+          error: 'Table name is required'
+        });
+      }
+
+      // Default columns if none provided
+      const defaultColumns = columns.length > 0 ? columns : [
+        { name: 'id', type: 'int64', nullable: false },
+        { name: 'created_at', type: 'timestamp', nullable: false },
+        { name: 'updated_at', type: 'timestamp', nullable: true }
+      ];
+
+      const result = await vastDbService.createTable(schemaName, tableName, defaultColumns);
 
       if (!result.success) {
         return res.status(400).json({
@@ -193,7 +144,7 @@ class SchemaController {
       res.status(201).json({
         success: true,
         table: result.table,
-        message: `Table '${tableName}' created successfully`
+        message: result.message
       });
 
     } catch (error) {
@@ -205,23 +156,44 @@ class SchemaController {
   async listTables(req, res, next) {
     try {
       const { name: schemaName } = req.params;
-      const { vastHost, vastPort, tenant } = req.user;
 
-      const result = await databaseService.listTables({
-        vastHost,
-        vastPort,
-        tenant,
-        bucketName: schemaName
-      });
+      const result = await vastDbService.getSchema(schemaName);
+
+      if (!result.success) {
+        return res.status(404).json({
+          error: 'Schema not found',
+          message: result.message
+        });
+      }
 
       res.json({
         success: true,
-        tables: result.tables || [],
+        tables: result.schema.tables || [],
         schema: schemaName
       });
 
     } catch (error) {
       console.error('List tables error:', error);
+      next(error);
+    }
+  }
+
+  async getConnectionInfo(req, res, next) {
+    try {
+      const connectionInfo = vastDbService.getConnectionInfo();
+      const connectionTest = await vastDbService.connect();
+
+      res.json({
+        success: true,
+        connection: {
+          ...connectionInfo,
+          status: connectionTest.success ? 'connected' : 'disconnected',
+          message: connectionTest.message
+        }
+      });
+
+    } catch (error) {
+      console.error('Get connection info error:', error);
       next(error);
     }
   }
