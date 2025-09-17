@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Example - Digital Infrastructure Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+            line-height: 1.6;
+        }
+
+        .container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-bottom: 1px solid #e5e7eb;
+            z-index: 1000;
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e40af;
+            text-decoration: none;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .header-nav a {
+            color: #6b7280;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .header-nav a:hover {
+            color: #1e40af;
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: #3b82f6;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background: #f8fafc;
+            border-right: 1px solid #e5e7eb;
+            padding: 80px 0 20px 0;
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            overflow-y: auto;
+        }
+
+        .nav-section {
+            margin-bottom: 2rem;
+        }
+
+        .nav-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #9ca3af;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 0.75rem 1rem;
+            color: #4b5563;
+            text-decoration: none;
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .nav-item:hover {
+            background: #e2e8f0;
+            color: #1e40af;
+            border-left-color: #3b82f6;
+        }
+
+        .nav-item.active {
+            background: #dbeafe;
+            color: #1e40af;
+            border-left-color: #3b82f6;
+            font-weight: 500;
+        }
+
+        .nav-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 12px;
+            opacity: 0.7;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 260px;
+            padding: 80px 2rem 2rem 2rem;
+            background: #ffffff;
+        }
+
+        .welcome-section {
+            margin-bottom: 2rem;
+        }
+
+        .welcome-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .welcome-subtitle {
+            color: #6b7280;
+            font-size: 1rem;
+        }
+
+        .welcome-subtitle a {
+            color: #3b82f6;
+            text-decoration: none;
+        }
+
+        /* GPU Banner */
+        .gpu-banner {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border: 1px solid #93c5fd;
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gpu-banner::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 100px;
+            height: 100px;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+        }
+
+        .gpu-banner h3 {
+            color: #1e40af;
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .gpu-banner p {
+            color: #1e40af;
+            margin-bottom: 1.5rem;
+            max-width: 600px;
+        }
+
+        .cta-button {
+            background: #3b82f6;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .cta-button:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 2rem;
+        }
+
+        .tab {
+            padding: 1rem 0;
+            margin-right: 2rem;
+            border-bottom: 2px solid transparent;
+            color: #6b7280;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #3b82f6;
+            border-bottom-color: #3b82f6;
+        }
+
+        /* Resource Grid */
+        .resource-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .resource-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .resource-card:hover {
+            border-color: #3b82f6;
+            box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .resource-icon {
+            width: 48px;
+            height: 48px;
+            background: #dbeafe;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .resource-category {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .resource-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .resource-description {
+            color: #6b7280;
+            font-size: 0.875rem;
+            margin-bottom: 1.5rem;
+            line-height: 1.5;
+        }
+
+        .resource-button {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            color: #374151;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            display: inline-block;
+            transition: all 0.2s;
+        }
+
+        .resource-button:hover {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+
+        /* More Resources Section */
+        .more-resources {
+            margin-top: 3rem;
+        }
+
+        .more-resources h3 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 1.5rem;
+        }
+
+        .more-resource-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .more-resource-item {
+            background: #f8fafc;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 1rem;
+            transition: all 0.2s;
+        }
+
+        .more-resource-item:hover {
+            background: white;
+            border-color: #3b82f6;
+            transform: translateY(-1px);
+        }
+
+        .more-resource-title {
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+
+        .more-resource-desc {
+            color: #6b7280;
+            font-size: 0.875rem;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .main-content {
+                margin-left: 0;
+                padding: 80px 1rem 2rem 1rem;
+            }
+            
+            .resource-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <a href="#" class="logo">
+            </a>
+            <nav class="header-nav">
+                <a href="#">Infrastructure</a>
+                <a href="#">Services</a>
+                <a href="#">Company</a>
+                <a href="#">Documentation</a>
+                <a href="#">Support</a>
+            </nav>
+            <div class="user-menu">
+                <span>africa-east-1</span>
+                <div class="user-avatar">S</div>
+            </div>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="nav-section">
+                <div class="nav-title">Main</div>
+                <a href="#" class="nav-item active">
+                    <span class="nav-icon">🏠</span>
+                    Home
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">Compute</div>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">💻</span>
+                    Virtual Servers
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📦</span>
+                    Container Services
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">⚡</span>
+                    GPU Computing
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">☸️</span>
+                    Container Orchestration
+                </a>
+            </div>
+
+            <div class="nav-section">
+		    <div class="nav-title">Data Services<br/>(powered by VAST Data)</div>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🪣</span>
+                    S3
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📨</span>
+                    Kafka
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🗄️</span>
+                    Database
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🧠</span>
+                    Vector DB
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">⚡</span>
+                    Serverless Functions
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📚</span>
+                    Document RAG
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">Services</div>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">💾</span>
+                    Storage Solutions
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🤖</span>
+                    AI & ML Tools
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📱</span>
+                    Application Services
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📊</span>
+                    Monitoring & Analytics
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">🌐</span>
+                    Networking
+                </a>
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-title">Manage</div>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">💳</span>
+                    Billing
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">📝</span>
+                    Audit Logs
+                </a>
+                <a href="#" class="nav-item">
+                    <span class="nav-icon">⚙️</span>
+                    Administration
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div class="welcome-section">
+                <h1 class="welcome-title">Welcome to Example Cloud</h1>
+                <p class="welcome-subtitle">Manage and monitor your digital infrastructure here. <a href="#">Learn more</a></p>
+            </div>
+
+            <!-- Vector DB Banner -->
+            <div class="gpu-banner">
+                <h3>Power Your AI with Vector DB</h3>
+                <p>Build intelligent applications with our high-performance vector database. Optimized for embeddings, similarity search, and RAG applications. Scale from prototype to production with lightning-fast vector operations and seamless AI integration.</p>
+                <a href="#" class="cta-button">Get Started with Vector DB</a>
+            </div>
+
+            <!-- Tabs -->
+            <div class="tabs">
+                <a href="#" class="tab active">Resources</a>
+                <a href="#" class="tab">Project settings</a>
+            </div>
+
+            <!-- Resource Grid -->
+            <div class="resource-grid">
+                <div class="resource-card">
+                    <div class="resource-icon">💻</div>
+                    <div class="resource-category">Compute</div>
+                    <h3 class="resource-title">Virtual Servers</h3>
+                    <p class="resource-description">Deploy scalable virtual machines with GPU acceleration for compute-intensive workloads.</p>
+                    <a href="#" class="resource-button">Create Server</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">⚡</div>
+                    <div class="resource-category">Serverless</div>
+                    <h3 class="resource-title">Functions</h3>
+                    <p class="resource-description">Serverless functions platform for event-driven applications with automatic scaling and pay-per-use pricing.</p>
+                    <a href="#" class="resource-button">Deploy Function</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">🗄️</div>
+                    <div class="resource-category">Database</div>
+                    <h3 class="resource-title">Database</h3>
+                    <p class="resource-description">High-performance managed database service with automatic scaling and built-in analytics capabilities.</p>
+                    <a href="#" class="resource-button">Create Database</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">🧠</div>
+                    <div class="resource-category">AI & Vector</div>
+                    <h3 class="resource-title">Vector DB</h3>
+                    <p class="resource-description">Specialized vector database for AI applications, embeddings, and similarity search at scale.</p>
+                    <a href="#" class="resource-button">Create Vector DB</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">📨</div>
+                    <div class="resource-category">Messaging</div>
+                    <h3 class="resource-title">Kafka</h3>
+                    <p class="resource-description">Managed Apache Kafka service for real-time data streaming and event-driven architectures.</p>
+                    <a href="#" class="resource-button">Create Topic</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">📚</div>
+                    <div class="resource-category">AI & ML</div>
+                    <h3 class="resource-title">Document RAG</h3>
+                    <p class="resource-description">Document retrieval and generation system powered by advanced AI for intelligent content processing.</p>
+                    <a href="#" class="resource-button">Setup RAG</a>
+                </div>
+
+                <div class="resource-card">
+                    <div class="resource-icon">🪣</div>
+                    <div class="resource-category">Object Storage</div>
+                    <h3 class="resource-title">S3</h3>
+                    <p class="resource-description">S3-compatible object storage with enterprise-grade performance, security, and global accessibility.</p>
+                    <a href="#" class="resource-button">Create Bucket</a>
+                </div>
+            </div>
+
+            <!-- Additional Services -->
+            <div class="more-resources">
+                <h3>Additional Services</h3>
+                <div class="more-resource-grid">
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">📦 Container Services</div>
+                        <div class="more-resource-desc">Deploy applications using containerized environments with automated scaling and management.</div>
+                    </div>
+                    
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">☸️ Container Orchestration</div>
+                        <div class="more-resource-desc">Create and manage container orchestration clusters for enterprise applications.</div>
+                    </div>
+                    
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">⚡ GPU Clusters</div>
+                        <div class="more-resource-desc">High-performance computing clusters with advanced interconnect technology.</div>
+                    </div>
+                    
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">📊 Analytics Platform</div>
+                        <div class="more-resource-desc">Comprehensive data analytics and business intelligence platform for insights and reporting.</div>
+                    </div>
+                    
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">📋 Container Registry</div>
+                        <div class="more-resource-desc">Private container registry for storing and managing application images securely.</div>
+                    </div>
+
+                    <div class="more-resource-item">
+                        <div class="more-resource-title">🔧 Load Balancers</div>
+                        <div class="more-resource-desc">Distribute traffic across multiple instances for high availability and performance.</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
