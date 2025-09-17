@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { Plus, Database, Calendar, Trash2, Eye, Server, AlertCircle } from 'lucide-react';
+import { Plus, Database, Calendar, Trash2, Eye, Server, AlertCircle, X } from 'lucide-react';
 import Layout from '../components/Layout';
 import LoadingSpinner from '../components/LoadingSpinner';
 import CreateSchemaModal from '../components/CreateSchemaModal';
@@ -85,7 +85,7 @@ const SchemaManager = () => {
         <div className="text-center py-12">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-600 mb-4">Failed to load schemas</p>
-          <button 
+          <button
             onClick={() => queryClient.invalidateQueries('schemas')}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
@@ -120,8 +120,8 @@ const SchemaManager = () => {
         {/* Connection Status */}
         {connectionInfo && (
           <div className={`p-4 rounded-lg border ${
-            isConnected 
-              ? 'bg-green-50 border-green-200' 
+            isConnected
+              ? 'bg-green-50 border-green-200'
               : 'bg-red-50 border-red-200'
           }`}>
             <div className="flex items-center space-x-3">
@@ -136,7 +136,7 @@ const SchemaManager = () => {
                   }`}></div>
                 </div>
                 <div className="text-sm text-gray-600 mt-1">
-                  <strong>Endpoint:</strong> {connectionInfo.connection?.endpoint} | 
+                  <strong>Endpoint:</strong> {connectionInfo.connection?.endpoint} |
                   <strong> Bucket:</strong> {connectionInfo.connection?.bucket}
                 </div>
               </div>
@@ -197,8 +197,8 @@ const SchemaManager = () => {
                         <span
                           key={protocol}
                           className={`px-2 py-1 rounded text-xs ${
-                            protocol === 'DATABASE' 
-                              ? 'bg-blue-100 text-blue-700' 
+                            protocol === 'DATABASE'
+                              ? 'bg-blue-100 text-blue-700'
                               : 'bg-gray-100 text-gray-700'
                           }`}
                         >
@@ -235,7 +235,7 @@ const SchemaManager = () => {
             <Database className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No schemas found</h3>
             <p className="text-gray-600 mb-6">
-              {isConnected 
+              {isConnected
                 ? 'Create your first database schema to get started'
                 : 'Connect to VAST Database to manage schemas'
               }
