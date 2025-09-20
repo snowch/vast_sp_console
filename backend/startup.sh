@@ -3,6 +3,8 @@
 
 set -e
 
+cd "$(dirname "$0")"
+
 echo "Starting VAST Services Python Backend..."
 
 # Check if virtual environment exists
