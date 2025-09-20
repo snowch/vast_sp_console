@@ -233,13 +233,10 @@ const result = await vastDbService.createSchema('my_schema');
 ### Development Scripts
 ```bash
 # Backend
-npm run dev          # Start development server with nodemon
-npm start           # Start production server
+docker compose up   # Start development server with nodemon
 
 # Frontend  
 npm start           # Start development server
-npm run build       # Build for production
-npm test            # Run tests
 ```
 
 ### Environment Variable Requirements

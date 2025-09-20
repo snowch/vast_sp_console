@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Path
 from typing import Dict, Any, Optional
 import logging
 import re
+import time
 
 from models import (
     CreateSchemaRequest, 
@@ -298,5 +299,5 @@ async def schemas_health():
     return {
         "status": "healthy",
         "vast_database": "connected",
-        "timestamp": import time; time.time()
+        "timestamp": time.time()
     }
