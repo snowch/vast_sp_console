@@ -1,17 +1,11 @@
 """
-VAST Database service using the actual vastdb Python SDK
+VAST Database service using the actual vastdb Python SDK with lazy connection
 """
 
 import logging
 import time
 from typing import Dict, Optional, Any, List
 from datetime import datetime
-
-import vastdb
-from vastdb.errors import (
-    MissingBucket, MissingSchema, MissingTable, 
-    SchemaExists, TableExists, NotFound
-)
 
 from config import settings, validate_vast_config
 
@@ -22,6 +16,11 @@ class VastDbService:
     """Service that provides vastdb functionality using the official Python SDK"""
     
     def __init__(self):
+        """Initialize service but don't connect until needed"""
+        self.session = None
+        self._connection_attempted = False
+        self._connection_error = None
+        
         try:
             validate_vast_config()
             self.endpoint = settings.VAST_ENDPOINT
@@ -31,7 +30,27 @@ class VastDbService:
             self.verify_ssl = settings.VAST_VERIFY_SSL
             self.region = settings.VAST_REGION
             
-            # Create the vastdb session
+            logger.info(f"VastDB service configured with endpoint: {self.endpoint}, bucket: {self.bucket_name}")
+            
+        except ValueError as e:
+            logger.error(f"VAST configuration error: {e}")
+            self._connection_error = str(e)
+    
+    def _ensure_connection(self):
+        """Ensure we have a valid connection, create if needed"""
+        if self.session is not None:
+            return True
+            
+        if self._connection_error:
+            return False
+            
+        if self._connection_attempted:
+            return False
+            
+        try:
+            import vastdb
+            logger.info("Attempting to connect to VAST Database...")
+            
             self.session = vastdb.connect(
                 endpoint=self.endpoint,
                 access=self.access_key_id,
@@ -39,18 +58,28 @@ class VastDbService:
                 ssl_verify=self.verify_ssl
             )
             
-            logger.info(f"VastDB service initialized with endpoint: {self.endpoint}, bucket: {self.bucket_name}")
+            logger.info("Successfully connected to VAST Database")
+            self._connection_attempted = True
+            return True
             
-        except ValueError as e:
-            logger.error(f"VAST configuration error: {e}")
-            self.session = None
+        except Exception as e:
+            logger.error(f"Failed to connect to VAST Database: {str(e)}")
+            self._connection_error = str(e)
+            self._connection_attempted = True
+            return False
     
     async def connect(self) -> Dict[str, Any]:
         """Test connection to VAST endpoint"""
-        if not self.session:
+        if self._connection_error:
             return {
                 "success": False,
-                "message": "VAST Database not configured - missing environment variables"
+                "message": f"VAST Database configuration error: {self._connection_error}"
+            }
+        
+        if not self._ensure_connection():
+            return {
+                "success": False,
+                "message": self._connection_error or "Failed to establish VAST Database connection"
             }
         
         try:
@@ -65,27 +94,34 @@ class VastDbService:
                     "message": "Connected to VAST Database"
                 }
                 
-        except MissingBucket:
-            return {
-                "success": False,
-                "message": f"Bucket '{self.bucket_name}' not found"
-            }
         except Exception as e:
-            logger.error(f"VAST DB connection error: {str(e)}")
+            # Handle specific VastDB exceptions
+            import vastdb.errors as vastdb_errors
+            
+            if isinstance(e, vastdb_errors.MissingBucket):
+                error_msg = f"Bucket '{self.bucket_name}' not found"
+            elif isinstance(e, vastdb_errors.ConnectionError):
+                error_msg = f"Failed to connect to VAST Database: {str(e)}"
+            else:
+                error_msg = f"VAST Database error: {str(e)}"
+                
+            logger.error(f"VAST DB connection test error: {error_msg}")
             return {
                 "success": False,
-                "message": f"Failed to connect to VAST Database: {str(e)}"
+                "message": error_msg
             }
     
     async def create_schema(self, schema_name: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a database schema"""
-        if not self.session:
+        if not self._ensure_connection():
             return {
                 "success": False,
-                "message": "VAST Database not configured"
+                "message": self._connection_error or "VAST Database not available"
             }
         
         try:
+            import vastdb.errors as vastdb_errors
+            
             options = options or {}
             fail_if_exists = options.get("failIfExists", True)
             
@@ -108,7 +144,7 @@ class VastDbService:
                         "message": f"Schema '{schema_name}' created successfully"
                     }
                     
-                except SchemaExists:
+                except vastdb_errors.SchemaExists:
                     if fail_if_exists:
                         return {
                             "success": False,
@@ -138,10 +174,10 @@ class VastDbService:
     
     async def list_schemas(self) -> Dict[str, Any]:
         """List all schemas in the bucket"""
-        if not self.session:
+        if not self._ensure_connection():
             return {
                 "success": False,
-                "message": "VAST Database not configured",
+                "message": self._connection_error or "VAST Database not available",
                 "schemas": []
             }
         
@@ -177,13 +213,15 @@ class VastDbService:
     
     async def get_schema(self, schema_name: str) -> Dict[str, Any]:
         """Get a specific schema"""
-        if not self.session:
+        if not self._ensure_connection():
             return {
                 "success": False,
-                "message": "VAST Database not configured"
+                "message": self._connection_error or "VAST Database not available"
             }
         
         try:
+            import vastdb.errors as vastdb_errors
+            
             with self.session.transaction() as tx:
                 bucket = tx.bucket(self.bucket_name)
                 
@@ -214,7 +252,7 @@ class VastDbService:
                         }
                     }
                     
-                except MissingSchema:
+                except vastdb_errors.MissingSchema:
                     return {
                         "success": False,
                         "message": f"Schema '{schema_name}' not found"
@@ -229,13 +267,15 @@ class VastDbService:
     
     async def delete_schema(self, schema_name: str) -> Dict[str, Any]:
         """Delete a schema"""
-        if not self.session:
+        if not self._ensure_connection():
             return {
                 "success": False,
-                "message": "VAST Database not configured"
+                "message": self._connection_error or "VAST Database not available"
             }
         
         try:
+            import vastdb.errors as vastdb_errors
+            
             with self.session.transaction() as tx:
                 bucket = tx.bucket(self.bucket_name)
                 
@@ -248,7 +288,7 @@ class VastDbService:
                         "message": f"Schema '{schema_name}' deleted successfully"
                     }
                     
-                except MissingSchema:
+                except vastdb_errors.MissingSchema:
                     return {
                         "success": False,
                         "message": f"Schema '{schema_name}' not found"
@@ -263,14 +303,15 @@ class VastDbService:
     
     async def create_table(self, schema_name: str, table_name: str, columns: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a table in a schema"""
-        if not self.session:
+        if not self._ensure_connection():
             return {
                 "success": False,
-                "message": "VAST Database not configured"
+                "message": self._connection_error or "VAST Database not available"
             }
         
         try:
             import pyarrow as pa
+            import vastdb.errors as vastdb_errors
             
             # Convert columns to PyArrow schema
             if not columns:
@@ -308,7 +349,7 @@ class VastDbService:
                         "message": f"Table '{table_name}' created successfully"
                     }
                     
-                except TableExists:
+                except vastdb_errors.TableExists:
                     return {
                         "success": False,
                         "message": f"Table '{table_name}' already exists"
@@ -353,11 +394,12 @@ class VastDbService:
     def get_connection_info(self) -> Dict[str, Any]:
         """Get connection information"""
         return {
-            "endpoint": self.endpoint,
-            "bucket": self.bucket_name,
-            "connected": self.session is not None
+            "endpoint": getattr(self, 'endpoint', None),
+            "bucket": getattr(self, 'bucket_name', None),
+            "connected": self.session is not None,
+            "configuration_error": self._connection_error
         }
 
 
-# Global service instance
+# Global service instance - now safe to create at module level
 vastdb_service = VastDbService()

@@ -5,6 +5,9 @@ Configuration settings for VAST Services backend
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -17,7 +20,7 @@ class Settings(BaseSettings):
     JWT_EXPIRES_IN: str = "8h"
     FRONTEND_URL: str = "http://localhost:3000"
     
-    # VAST Database Configuration
+    # VAST Database Configuration (Optional - will be checked when needed)
     VAST_ENDPOINT: Optional[str] = None
     VAST_ACCESS_KEY_ID: Optional[str] = None
     VAST_SECRET_ACCESS_KEY: Optional[str] = None
@@ -37,7 +40,7 @@ settings = Settings()
 
 
 def validate_vast_config():
-    """Validate VAST configuration"""
+    """Validate VAST configuration - raises ValueError if invalid"""
     required_vars = [
         "VAST_ENDPOINT",
         "VAST_ACCESS_KEY_ID", 
@@ -46,23 +49,40 @@ def validate_vast_config():
     ]
     
     missing_vars = []
+    placeholder_vars = []
+    
     for var in required_vars:
-        if not getattr(settings, var):
+        value = getattr(settings, var)
+        if not value:
             missing_vars.append(var)
+        elif value in ["your-vast-endpoint", "your-access-key", "your-secret-key", "your-bucket-name"]:
+            placeholder_vars.append(var)
     
     if missing_vars:
         raise ValueError(f"Missing required VAST environment variables: {missing_vars}")
+    
+    if placeholder_vars:
+        raise ValueError(f"VAST environment variables contain placeholder values: {placeholder_vars}")
 
 
 def get_vast_connection_info():
-    """Get VAST connection information"""
+    """Get VAST connection information - returns None if not configured"""
     try:
         validate_vast_config()
         return {
             "endpoint": settings.VAST_ENDPOINT,
             "bucket": settings.VAST_BUCKET_NAME,
             "region": settings.VAST_REGION,
-            "verify_ssl": settings.VAST_VERIFY_SSL
+            "verify_ssl": settings.VAST_VERIFY_SSL,
+            "configured": True
         }
-    except ValueError:
-        return None
+    except ValueError as e:
+        logger.warning(f"VAST configuration invalid: {e}")
+        return {
+            "endpoint": settings.VAST_ENDPOINT,
+            "bucket": settings.VAST_BUCKET_NAME,
+            "region": settings.VAST_REGION,
+            "verify_ssl": settings.VAST_VERIFY_SSL,
+            "configured": False,
+            "error": str(e)
+        }
