@@ -9,3 +9,15 @@ python-dotenv==1.0.1
 urllib3==2.2.3
 cryptography==44.0.0
 email-validator==2.2.0
+
+# VAST DB Python SDK
+vastdb>=1.4.0
+
+# Additional dependencies for vastdb
+pyarrow>=10.0.0
+ibis-framework==9.0.0
+requests
+xmltodict
+backoff==2.2.1
+aws-requests-auth
+flatbuffers
