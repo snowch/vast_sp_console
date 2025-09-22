@@ -121,7 +121,7 @@ async def root():
         "endpoints": {
             "health": "/health",
             "auth": "/api/auth/*", 
-            "schemas": "/api/schemas/*"
+            "database_schemas": "/api/database/schemas/*"
         }
     }
 
@@ -174,8 +174,8 @@ except ImportError as e:
 
 try:
     from controllers.schema_controller import router as schema_router
-    app.include_router(schema_router, prefix="/api/schemas", tags=["schemas"])
-    logger.info("✅ Schema controller loaded")
+    app.include_router(schema_router, prefix="/api/database/schemas", tags=["database", "schemas"])
+    logger.info("✅ Schema controller loaded at /api/database/schemas")
 except ImportError as e:
     logger.error(f"❌ Failed to load schema controller: {e}")
     
@@ -206,8 +206,8 @@ except ImportError as e:
             "total": 0
         }
     
-    app.include_router(minimal_schema_router, prefix="/api/schemas", tags=["schemas"])
-    logger.info("⚠️  Minimal schema controller loaded (VAST Database unavailable)")
+    app.include_router(minimal_schema_router, prefix="/api/database/schemas", tags=["database", "schemas"])
+    logger.info("⚠️  Minimal schema controller loaded at /api/database/schemas (VAST Database unavailable)")
 
 # 404 handler
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])

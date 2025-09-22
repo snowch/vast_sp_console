@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Path
 from typing import Dict, Any, Optional
 import logging
 import re
+import time
 
 from models import (
     CreateSchemaRequest, 
@@ -310,14 +311,14 @@ async def list_tables(
             )
 
 
-# Health check for schemas endpoint
-@router.get("/health/schemas")
+# Health check for database schemas service
+@router.get("/health")
 async def schemas_health():
-    """Health check for schemas service"""
+    """Health check for database schemas service"""
     try:
         connection_info = vastdb_service.get_connection_info()
         
-        if not connection_info["connected"]:
+        if not connection_info.get("connected"):
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="VAST Database not available"

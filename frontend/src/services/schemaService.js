@@ -2,17 +2,17 @@ import { apiClient } from './apiClient';
 
 class SchemaService {
   async getConnectionInfo() {
-    const response = await apiClient.get('/schemas/connection');
+    const response = await apiClient.get('/database/schemas/connection');
     return response.data;
   }
 
   async listSchemas() {
-    const response = await apiClient.get('/schemas');
+    const response = await apiClient.get('/database/schemas');
     return response.data;
   }
 
   async createSchema(schemaData) {
-    const response = await apiClient.post('/schemas', {
+    const response = await apiClient.post('/database/schemas', {
       name: schemaData.name,
       description: schemaData.description
     });
@@ -20,22 +20,28 @@ class SchemaService {
   }
 
   async getSchema(schemaName) {
-    const response = await apiClient.get(`/schemas/${schemaName}`);
+    const response = await apiClient.get(`/database/schemas/${schemaName}`);
     return response.data;
   }
 
   async deleteSchema(schemaName) {
-    const response = await apiClient.delete(`/schemas/${schemaName}`);
+    const response = await apiClient.delete(`/database/schemas/${schemaName}`);
     return response.data;
   }
 
   async createTable(schemaName, tableData) {
-    const response = await apiClient.post(`/schemas/${schemaName}/tables`, tableData);
+    const response = await apiClient.post(`/database/schemas/${schemaName}/tables`, tableData);
     return response.data;
   }
 
   async listTables(schemaName) {
-    const response = await apiClient.get(`/schemas/${schemaName}/tables`);
+    const response = await apiClient.get(`/database/schemas/${schemaName}/tables`);
+    return response.data;
+  }
+
+  // Health check for database schemas service
+  async healthCheck() {
+    const response = await apiClient.get('/database/schemas/health');
     return response.data;
   }
 }
