@@ -7,15 +7,15 @@ import {
   Server, 
   MessageSquare, 
   BarChart3, 
-  Settings, 
-  LogOut, 
+  // Settings, 
+  // LogOut, 
   Brain,
   FileText,
   Zap,
   HardDrive,
   Container,
-  CheckCircle,
-  AlertCircle
+  // CheckCircle,
+  // AlertCircle
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import { schemaService } from '../services/schemaService';
