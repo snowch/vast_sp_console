@@ -1,6 +1,6 @@
 """
-Schema controller for database schema management - FIXED VERSION
-Addresses the 405 Method Not Allowed error
+Schema controller for database schema management - FIXED ROUTES VERSION
+Addresses the 405 Method Not Allowed error by fixing route order and conflicts
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Path
@@ -18,11 +18,12 @@ from models import (
 )
 from middleware.auth_middleware import get_current_user
 
-# Create router with explicit tags
+# Create router - IMPORTANT: No prefix here since it's added in main.py
 router = APIRouter(tags=["schemas", "database"])
 logger = logging.getLogger(__name__)
 
 
+# CRITICAL: Connection endpoint MUST come before parameterized routes
 @router.get("/connection", summary="Get VAST Database connection status")
 async def get_connection_info(user: Dict[str, Any] = Depends(get_current_user)):
     """Get VAST Database connection status and configuration"""
@@ -77,6 +78,58 @@ async def get_connection_info(user: Dict[str, Any] = Depends(get_current_user)):
         }
 
 
+# Health endpoint - MUST come before parameterized routes
+@router.get("/health/schemas", summary="Health check for schemas service")
+async def schemas_health():
+    """Health check endpoint for the database schemas service"""
+    try:
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
+        
+        if not connection_info.get("configured"):
+            return {
+                "status": "service_unavailable",
+                "vast_database": "not_configured",
+                "message": "VAST Database not configured",
+                "timestamp": time.time()
+            }
+        
+        # Test the connection if VastDB service is available
+        try:
+            from services.vastdb_service import vastdb_service
+            connection_test = await vastdb_service.connect()
+            
+            return {
+                "status": "healthy" if connection_test["success"] else "unhealthy",
+                "vast_database": "connected" if connection_test["success"] else "disconnected",
+                "endpoint": connection_info["endpoint"],
+                "bucket": connection_info["bucket"],
+                "message": connection_test["message"],
+                "timestamp": time.time()
+            }
+            
+        except ImportError as e:
+            logger.error(f"VastDB service not available: {e}")
+            return {
+                "status": "service_unavailable",
+                "vast_database": "service_not_available",
+                "endpoint": connection_info["endpoint"],
+                "bucket": connection_info["bucket"],
+                "message": "VastDB service not available",
+                "timestamp": time.time()
+            }
+        
+    except Exception as e:
+        logger.error(f"Health check error: {str(e)}")
+        return {
+            "status": "unhealthy",
+            "vast_database": "error",
+            "message": f"Health check failed: {str(e)}",
+            "timestamp": time.time()
+        }
+
+
+# CRITICAL: Root endpoints - MUST use trailing slash to match exactly
 @router.get("/", summary="List all database schemas")
 async def list_schemas(user: Dict[str, Any] = Depends(get_current_user)):
     """List all database schemas in the configured bucket"""
@@ -210,6 +263,7 @@ async def create_schema(
         )
 
 
+# Parameterized routes MUST come after static routes
 @router.get("/{name}", summary="Get a specific schema")
 async def get_schema(
     name: str = Path(..., min_length=1, max_length=64, description="Schema name"),
@@ -478,66 +532,11 @@ async def list_tables(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list tables"
         )
+    
+@router.get("")  # No trailing slash
+async def list_schemas_no_slash(user: Dict[str, Any] = Depends(get_current_user)):
+    return await list_schemas(user)
 
-
-@router.get("/health/schemas", summary="Health check for schemas service")
-async def schemas_health():
-    """Health check endpoint for the database schemas service"""
-    try:
-        from config import get_vast_connection_info
-        connection_info = get_vast_connection_info()
-        
-        if not connection_info.get("configured"):
-            return {
-                "status": "service_unavailable",
-                "vast_database": "not_configured",
-                "message": "VAST Database not configured",
-                "timestamp": time.time()
-            }
-        
-        # Test the connection if VastDB service is available
-        try:
-            from services.vastdb_service import vastdb_service
-            connection_test = await vastdb_service.connect()
-            
-            return {
-                "status": "healthy" if connection_test["success"] else "unhealthy",
-                "vast_database": "connected" if connection_test["success"] else "disconnected",
-                "endpoint": connection_info["endpoint"],
-                "bucket": connection_info["bucket"],
-                "message": connection_test["message"],
-                "timestamp": time.time()
-            }
-            
-        except ImportError as e:
-            logger.error(f"VastDB service not available: {e}")
-            return {
-                "status": "service_unavailable",
-                "vast_database": "service_not_available",
-                "endpoint": connection_info["endpoint"],
-                "bucket": connection_info["bucket"],
-                "message": "VastDB service not available",
-                "timestamp": time.time()
-            }
-        
-    except Exception as e:
-        logger.error(f"Health check error: {str(e)}")
-        return {
-            "status": "unhealthy",
-            "vast_database": "error",
-            "message": f"Health check failed: {str(e)}",
-            "timestamp": time.time()
-        }
-        
-    @router.get("", summary="List all database schemas (alternative)")
-    async def list_schemas_alt(user: Dict[str, Any] = Depends(get_current_user)):
-        """List all database schemas - alternative endpoint without trailing slash"""
-        return await list_schemas(user)
-
-    @router.post("", status_code=status.HTTP_201_CREATED, summary="Create schema (alternative)")
-    async def create_schema_alt(
-        request: CreateSchemaRequest,
-        user: Dict[str, Any] = Depends(get_current_user)
-    ):
-        """Create schema - alternative endpoint without trailing slash"""
-        return await create_schema(request, user)
+@router.post("")  # No trailing slash  
+async def create_schema_no_slash(request: CreateSchemaRequest, user: Dict[str, Any] = Depends(get_current_user)):
+    return await create_schema(request, user)
