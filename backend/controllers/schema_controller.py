@@ -1,5 +1,5 @@
 """
-Schema controller for database schema management using real VastDB SDK
+Schema controller for database schema management with improved error handling
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Path
@@ -15,8 +15,6 @@ from models import (
     ApiResponse,
     ConnectionInfo
 )
-from services.vastdb_service import vastdb_service
-from services.vastdb_error_handler import handle_vastdb_exceptions, raise_http_exception_from_vastdb_error
 from middleware.auth_middleware import get_current_user
 
 router = APIRouter()
@@ -24,113 +22,193 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/connection")
-@handle_vastdb_exceptions
 async def get_connection_info(user: Dict[str, Any] = Depends(get_current_user)):
     """Get VAST Database connection status"""
     try:
-        connection_info = vastdb_service.get_connection_info()
-        connection_test = await vastdb_service.connect()
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        return {
-            "success": True,
-            "connection": {
-                **connection_info,
-                "status": "connected" if connection_test["success"] else "disconnected",
-                "message": connection_test["message"]
+        # Try to test the actual connection if configured
+        if connection_info.get("configured"):
+            try:
+                from services.vastdb_service import vastdb_service
+                connection_test = await vastdb_service.connect()
+                
+                return {
+                    "success": True,
+                    "connection": {
+                        **connection_info,
+                        "status": "connected" if connection_test["success"] else "disconnected",
+                        "message": connection_test["message"]
+                    }
+                }
+            except Exception as e:
+                logger.error(f"VAST DB connection test failed: {str(e)}")
+                return {
+                    "success": True,
+                    "connection": {
+                        **connection_info,
+                        "status": "disconnected",
+                        "message": f"Connection test failed: {str(e)}"
+                    }
+                }
+        else:
+            return {
+                "success": True,
+                "connection": {
+                    **connection_info,
+                    "status": "not_configured",
+                    "message": connection_info.get("error", "VAST Database not configured")
+                }
             }
-        }
         
     except Exception as e:
         logger.error(f"Get connection info error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get connection information"
-        )
+        return {
+            "success": False,
+            "connection": {
+                "endpoint": None,
+                "bucket": None,
+                "status": "error",
+                "message": f"Failed to get connection information: {str(e)}"
+            }
+        }
 
 
 @router.get("/")
-@handle_vastdb_exceptions
 async def list_schemas(user: Dict[str, Any] = Depends(get_current_user)):
     """List all database schemas"""
     try:
-        result = await vastdb_service.list_schemas()
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        if not result["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=result["message"]
-            )
+        if not connection_info.get("configured"):
+            return {
+                "success": False,
+                "message": "VAST Database not configured. Please check environment variables.",
+                "schemas": [],
+                "total": 0,
+                "connection": connection_info
+            }
         
-        return {
-            "success": True,
-            "schemas": result["schemas"],
-            "total": result["total"],
-            "connection": vastdb_service.get_connection_info()
-        }
+        # Try to import and use the VAST DB service
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.list_schemas()
+            
+            if not result["success"]:
+                return {
+                    "success": False,
+                    "message": result["message"],
+                    "schemas": [],
+                    "total": 0,
+                    "connection": connection_info
+                }
+            
+            return {
+                "success": True,
+                "schemas": result["schemas"],
+                "total": result["total"],
+                "connection": connection_info
+            }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
+            return {
+                "success": False,
+                "message": "VAST Database service not available - missing dependencies",
+                "schemas": [],
+                "total": 0,
+                "connection": connection_info
+            }
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            return {
+                "success": False,
+                "message": f"VAST Database error: {str(e)}",
+                "schemas": [],
+                "total": 0,
+                "connection": connection_info
+            }
         
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"List schemas error: {str(e)}")
-        # Check if it's a VastDB exception and handle accordingly
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to fetch schemas"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to fetch schemas"
+        )
 
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-@handle_vastdb_exceptions
 async def create_schema(
     request: CreateSchemaRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
     """Create a new database schema"""
     try:
-        result = await vastdb_service.create_schema(
-            schema_name=request.name,
-            options={
-                "description": request.description,
-                "failIfExists": True
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
+        
+        if not connection_info.get("configured"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database not configured"
+            )
+        
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.create_schema(
+                schema_name=request.name,
+                options={
+                    "description": request.description,
+                    "failIfExists": True
+                }
+            )
+            
+            if not result["success"]:
+                if "already exists" in result["message"].lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=result["message"]
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=result["message"]
+                    )
+            
+            return {
+                "success": True,
+                "schema": result["schema"],
+                "message": result["message"]
             }
-        )
-        
-        if not result["success"]:
-            if "already exists" in result["message"].lower():
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=result["message"]
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["message"]
-                )
-        
-        return {
-            "success": True,
-            "schema": result["schema"],
-            "message": result["message"]
-        }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database service not available"
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VAST Database error: {str(e)}"
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Create schema error: {str(e)}")
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create schema"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create schema"
+        )
 
 
 @router.get("/{name}")
-@handle_vastdb_exceptions
 async def get_schema(
     name: str = Path(..., min_length=1, max_length=64),
     user: Dict[str, Any] = Depends(get_current_user)
@@ -144,34 +222,56 @@ async def get_schema(
                 detail="Invalid schema name format"
             )
         
-        result = await vastdb_service.get_schema(name)
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        if not result["success"]:
+        if not connection_info.get("configured"):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=result["message"]
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database not configured"
             )
         
-        return {
-            "success": True,
-            "schema": result["schema"]
-        }
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.get_schema(name)
+            
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=result["message"]
+                )
+            
+            return {
+                "success": True,
+                "schema": result["schema"]
+            }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database service not available"
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VAST Database error: {str(e)}"
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Get schema error: {str(e)}")
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get schema"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get schema"
+        )
 
 
 @router.delete("/{name}")
-@handle_vastdb_exceptions
 async def delete_schema(
     name: str = Path(..., min_length=1, max_length=64),
     user: Dict[str, Any] = Depends(get_current_user)
@@ -185,40 +285,62 @@ async def delete_schema(
                 detail="Invalid schema name format"
             )
         
-        result = await vastdb_service.delete_schema(name)
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        if not result["success"]:
-            if "not found" in result["message"].lower():
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=result["message"]
-                )
-            else:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=result["message"]
-                )
+        if not connection_info.get("configured"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database not configured"
+            )
         
-        return {
-            "success": True,
-            "message": result["message"]
-        }
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.delete_schema(name)
+            
+            if not result["success"]:
+                if "not found" in result["message"].lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=result["message"]
+                    )
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=result["message"]
+                    )
+            
+            return {
+                "success": True,
+                "message": result["message"]
+            }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database service not available"
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VAST Database error: {str(e)}"
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Delete schema error: {str(e)}")
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to delete schema"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete schema"
+        )
 
 
 @router.post("/{name}/tables", status_code=status.HTTP_201_CREATED)
-@handle_vastdb_exceptions
 async def create_table(
     request: CreateTableRequest,
     name: str = Path(..., min_length=1, max_length=64),
@@ -233,6 +355,15 @@ async def create_table(
                 detail="Invalid schema name format"
             )
         
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
+        
+        if not connection_info.get("configured"):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database not configured"
+            )
+        
         # Default columns if none provided
         columns = request.columns
         if not columns:
@@ -242,35 +373,48 @@ async def create_table(
                 {"name": "updated_at", "type": "timestamp", "nullable": True}
             ]
         
-        result = await vastdb_service.create_table(name, request.tableName, columns)
-        
-        if not result["success"]:
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.create_table(name, request.tableName, columns)
+            
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=result["message"]
+                )
+            
+            return {
+                "success": True,
+                "table": result["table"],
+                "message": result["message"]
+            }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result["message"]
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database service not available"
             )
-        
-        return {
-            "success": True,
-            "table": result["table"],
-            "message": result["message"]
-        }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VAST Database error: {str(e)}"
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Create table error: {str(e)}")
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create table"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create table"
+        )
 
 
 @router.get("/{name}/tables")
-@handle_vastdb_exceptions
 async def list_tables(
     name: str = Path(..., min_length=1, max_length=64),
     user: Dict[str, Any] = Depends(get_current_user)
@@ -284,31 +428,54 @@ async def list_tables(
                 detail="Invalid schema name format"
             )
         
-        result = await vastdb_service.get_schema(name)
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        if not result["success"]:
+        if not connection_info.get("configured"):
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=result["message"]
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database not configured"
             )
         
-        return {
-            "success": True,
-            "tables": result["schema"].get("tables", []),
-            "schema": name
-        }
+        try:
+            from services.vastdb_service import vastdb_service
+            result = await vastdb_service.get_schema(name)
+            
+            if not result["success"]:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=result["message"]
+                )
+            
+            return {
+                "success": True,
+                "tables": result["schema"].get("tables", []),
+                "schema": name
+            }
+            
+        except ImportError as e:
+            logger.error(f"Failed to import vastdb_service: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="VAST Database service not available"
+            )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"VastDB service error: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"VAST Database error: {str(e)}"
+            )
         
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"List tables error: {str(e)}")
-        if hasattr(e, '__module__') and 'vastdb' in str(e.__module__):
-            raise_http_exception_from_vastdb_error(e)
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to list tables"
-            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to list tables"
+        )
 
 
 # Health check for database schemas service
@@ -316,35 +483,47 @@ async def list_tables(
 async def schemas_health():
     """Health check for database schemas service"""
     try:
-        connection_info = vastdb_service.get_connection_info()
+        from config import get_vast_connection_info
+        connection_info = get_vast_connection_info()
         
-        if not connection_info.get("connected"):
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="VAST Database not available"
-            )
+        if not connection_info.get("configured"):
+            return {
+                "status": "service_unavailable",
+                "vast_database": "not_configured",
+                "message": "VAST Database not configured",
+                "timestamp": time.time()
+            }
         
-        # Test the connection
-        connection_test = await vastdb_service.connect()
-        if not connection_test["success"]:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=connection_test["message"]
-            )
+        # Test the connection if VastDB service is available
+        try:
+            from services.vastdb_service import vastdb_service
+            connection_test = await vastdb_service.connect()
+            
+            return {
+                "status": "healthy" if connection_test["success"] else "unhealthy",
+                "vast_database": "connected" if connection_test["success"] else "disconnected",
+                "endpoint": connection_info["endpoint"],
+                "bucket": connection_info["bucket"],
+                "message": connection_test["message"],
+                "timestamp": time.time()
+            }
+            
+        except ImportError as e:
+            logger.error(f"VastDB service not available: {e}")
+            return {
+                "status": "service_unavailable",
+                "vast_database": "service_not_available",
+                "endpoint": connection_info["endpoint"],
+                "bucket": connection_info["bucket"],
+                "message": "VastDB service not available",
+                "timestamp": time.time()
+            }
         
-        return {
-            "status": "healthy",
-            "vast_database": "connected",
-            "endpoint": connection_info["endpoint"],
-            "bucket": connection_info["bucket"],
-            "timestamp": time.time()
-        }
-        
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Health check error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="VAST Database health check failed"
-        )
+        return {
+            "status": "unhealthy",
+            "vast_database": "error",
+            "message": f"Health check failed: {str(e)}",
+            "timestamp": time.time()
+        }

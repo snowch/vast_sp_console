@@ -1,5 +1,5 @@
 """
-VAST Database service using the actual vastdb Python SDK with lazy connection
+VAST Database service with improved error handling and graceful degradation
 """
 
 import logging
@@ -11,15 +11,49 @@ from config import settings, validate_vast_config
 
 logger = logging.getLogger(__name__)
 
+# Global variables to track VastDB availability
+VASTDB_AVAILABLE = None
+VASTDB_IMPORT_ERROR = None
+
+
+def check_vastdb_availability():
+    """Check if VastDB SDK is available"""
+    global VASTDB_AVAILABLE, VASTDB_IMPORT_ERROR
+    
+    if VASTDB_AVAILABLE is not None:
+        return VASTDB_AVAILABLE, VASTDB_IMPORT_ERROR
+    
+    try:
+        import vastdb
+        import vastdb.errors
+        import pyarrow as pa
+        VASTDB_AVAILABLE = True
+        VASTDB_IMPORT_ERROR = None
+        logger.info("VastDB SDK is available")
+    except ImportError as e:
+        VASTDB_AVAILABLE = False
+        VASTDB_IMPORT_ERROR = str(e)
+        logger.warning(f"VastDB SDK not available: {e}")
+    
+    return VASTDB_AVAILABLE, VASTDB_IMPORT_ERROR
+
 
 class VastDbService:
-    """Service that provides vastdb functionality using the official Python SDK"""
+    """Service that provides vastdb functionality with graceful error handling"""
     
     def __init__(self):
         """Initialize service but don't connect until needed"""
         self.session = None
         self._connection_attempted = False
         self._connection_error = None
+        
+        # Check if VastDB is available
+        self.vastdb_available, self.vastdb_error = check_vastdb_availability()
+        
+        if not self.vastdb_available:
+            self._connection_error = f"VastDB SDK not available: {self.vastdb_error}"
+            logger.error(self._connection_error)
+            return
         
         try:
             validate_vast_config()
@@ -38,6 +72,9 @@ class VastDbService:
     
     def _ensure_connection(self):
         """Ensure we have a valid connection, create if needed"""
+        if not self.vastdb_available:
+            return False
+            
         if self.session is not None:
             return True
             
@@ -70,7 +107,13 @@ class VastDbService:
     
     async def connect(self) -> Dict[str, Any]:
         """Test connection to VAST endpoint"""
-        if self._connection_error:
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}"
+            }
+            
+        if self._connection_error and not self._connection_attempted:
             return {
                 "success": False,
                 "message": f"VAST Database configuration error: {self._connection_error}"
@@ -95,14 +138,17 @@ class VastDbService:
                 }
                 
         except Exception as e:
-            # Handle specific VastDB exceptions
-            import vastdb.errors as vastdb_errors
-            
-            if isinstance(e, vastdb_errors.MissingBucket):
-                error_msg = f"Bucket '{self.bucket_name}' not found"
-            elif isinstance(e, vastdb_errors.ConnectionError):
-                error_msg = f"Failed to connect to VAST Database: {str(e)}"
-            else:
+            # Handle specific VastDB exceptions if available
+            try:
+                import vastdb.errors as vastdb_errors
+                
+                if isinstance(e, vastdb_errors.MissingBucket):
+                    error_msg = f"Bucket '{self.bucket_name}' not found"
+                elif isinstance(e, vastdb_errors.ConnectionError):
+                    error_msg = f"Failed to connect to VAST Database: {str(e)}"
+                else:
+                    error_msg = f"VAST Database error: {str(e)}"
+            except ImportError:
                 error_msg = f"VAST Database error: {str(e)}"
                 
             logger.error(f"VAST DB connection test error: {error_msg}")
@@ -113,6 +159,12 @@ class VastDbService:
     
     async def create_schema(self, schema_name: str, options: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a database schema"""
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}"
+            }
+            
         if not self._ensure_connection():
             return {
                 "success": False,
@@ -174,11 +226,20 @@ class VastDbService:
     
     async def list_schemas(self) -> Dict[str, Any]:
         """List all schemas in the bucket"""
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}",
+                "schemas": [],
+                "total": 0
+            }
+            
         if not self._ensure_connection():
             return {
                 "success": False,
                 "message": self._connection_error or "VAST Database not available",
-                "schemas": []
+                "schemas": [],
+                "total": 0
             }
         
         try:
@@ -208,11 +269,18 @@ class VastDbService:
             return {
                 "success": False,
                 "message": str(e),
-                "schemas": []
+                "schemas": [],
+                "total": 0
             }
     
     async def get_schema(self, schema_name: str) -> Dict[str, Any]:
         """Get a specific schema"""
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}"
+            }
+            
         if not self._ensure_connection():
             return {
                 "success": False,
@@ -267,6 +335,12 @@ class VastDbService:
     
     async def delete_schema(self, schema_name: str) -> Dict[str, Any]:
         """Delete a schema"""
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}"
+            }
+            
         if not self._ensure_connection():
             return {
                 "success": False,
@@ -303,6 +377,12 @@ class VastDbService:
     
     async def create_table(self, schema_name: str, table_name: str, columns: List[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Create a table in a schema"""
+        if not self.vastdb_available:
+            return {
+                "success": False,
+                "message": f"VastDB SDK not available: {self.vastdb_error}"
+            }
+            
         if not self._ensure_connection():
             return {
                 "success": False,
@@ -364,26 +444,32 @@ class VastDbService:
     
     def _map_to_arrow_type(self, type_name: str):
         """Map type name to PyArrow type"""
-        import pyarrow as pa
-        
-        type_map = {
-            'string': pa.string(),
-            'utf8': pa.string(),
-            'int': pa.int64(),
-            'int64': pa.int64(),
-            'int32': pa.int32(),
-            'integer': pa.int64(), 
-            'float': pa.float64(),
-            'float64': pa.float64(),
-            'double': pa.float64(),
-            'boolean': pa.bool_(),
-            'bool': pa.bool_(),
-            'date': pa.date32(),
-            'date32': pa.date32(),
-            'timestamp': pa.timestamp('us')
-        }
-        
-        return type_map.get(type_name, pa.string())
+        if not self.vastdb_available:
+            return None
+            
+        try:
+            import pyarrow as pa
+            
+            type_map = {
+                'string': pa.string(),
+                'utf8': pa.string(),
+                'int': pa.int64(),
+                'int64': pa.int64(),
+                'int32': pa.int32(),
+                'integer': pa.int64(), 
+                'float': pa.float64(),
+                'float64': pa.float64(),
+                'double': pa.float64(),
+                'boolean': pa.bool_(),
+                'bool': pa.bool_(),
+                'date': pa.date32(),
+                'date32': pa.date32(),
+                'timestamp': pa.timestamp('us')
+            }
+            
+            return type_map.get(type_name, pa.string())
+        except ImportError:
+            return None
     
     def _generate_schema_id(self, schema_name: str) -> str:
         """Generate a deterministic ID for the schema"""
@@ -397,7 +483,9 @@ class VastDbService:
             "endpoint": getattr(self, 'endpoint', None),
             "bucket": getattr(self, 'bucket_name', None),
             "connected": self.session is not None,
-            "configuration_error": self._connection_error
+            "configuration_error": self._connection_error,
+            "vastdb_available": self.vastdb_available,
+            "vastdb_error": self.vastdb_error
         }
 
 

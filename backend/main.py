@@ -1,9 +1,9 @@
 """
 VAST Services MVP - Python Backend
-Main FastAPI application with graceful VAST Database handling
+Main FastAPI application with improved routing and error handling
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
@@ -164,7 +164,7 @@ async def options_handler(request: Request, full_path: str):
         }
     )
 
-# Import and include routers with error handling
+# Import and include routers with improved error handling
 try:
     from controllers.auth_controller import router as auth_router
     app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
@@ -172,20 +172,29 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to load auth controller: {e}")
 
+# Try to load schema controller with better error handling
+schema_router_loaded = False
 try:
     from controllers.schema_controller import router as schema_router
     app.include_router(schema_router, prefix="/api/database/schemas", tags=["database", "schemas"])
     logger.info("✅ Schema controller loaded at /api/database/schemas")
+    schema_router_loaded = True
 except ImportError as e:
     logger.error(f"❌ Failed to load schema controller: {e}")
-    
-    # Create a minimal schema router if the full one fails
+except Exception as e:
+    logger.error(f"❌ Error loading schema controller: {e}")
+
+# Create fallback routes if schema controller failed to load
+if not schema_router_loaded:
     from fastapi import APIRouter
-    minimal_schema_router = APIRouter()
+    from config import get_vast_connection_info
     
-    @minimal_schema_router.get("/connection")
+    # Create minimal schema router
+    minimal_router = APIRouter()
+    
+    @minimal_router.get("/connection")
     async def get_connection_status():
-        from config import get_vast_connection_info
+        """Get VAST Database connection status"""
         vast_info = get_vast_connection_info()
         return {
             "success": vast_info.get("configured", False),
@@ -197,26 +206,98 @@ except ImportError as e:
             }
         }
     
-    @minimal_schema_router.get("/")
+    @minimal_router.get("/")
     async def list_schemas_minimal():
+        """List schemas - minimal implementation"""
+        vast_info = get_vast_connection_info()
+        if not vast_info.get("configured"):
+            return {
+                "success": False,
+                "message": "VAST Database not configured. Please check environment variables.",
+                "schemas": [],
+                "total": 0
+            }
+        
         return {
             "success": False,
-            "message": "VAST Database service not available",
+            "message": "VAST Database service not available - schema controller failed to load",
             "schemas": [],
             "total": 0
         }
     
-    app.include_router(minimal_schema_router, prefix="/api/database/schemas", tags=["database", "schemas"])
-    logger.info("⚠️  Minimal schema controller loaded at /api/database/schemas (VAST Database unavailable)")
+    @minimal_router.post("/")
+    async def create_schema_minimal():
+        """Create schema - minimal implementation"""
+        return {
+            "success": False,
+            "message": "Schema creation not available - schema controller failed to load"
+        }
+    
+    @minimal_router.get("/health")
+    async def schemas_health_minimal():
+        """Health check - minimal implementation"""
+        vast_info = get_vast_connection_info()
+        return {
+            "status": "service_unavailable",
+            "vast_database": "not_available",
+            "message": "Schema service not available",
+            "vast_configured": vast_info.get("configured", False)
+        }
+    
+    # Include minimal router
+    app.include_router(minimal_router, prefix="/api/database/schemas", tags=["database", "schemas"])
+    logger.info("⚠️  Minimal schema controller loaded at /api/database/schemas")
 
-# 404 handler
-@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH"])
-async def catch_all(request: Request, path: str):
-    """Catch all handler for 404s"""
-    logger.warning(f"404 - Path not found: {request.method} {path}")
+# Add a debug route to show all registered routes
+@app.get("/debug/routes")
+async def debug_routes():
+    """Debug endpoint to show all registered routes"""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            routes.append({
+                "path": route.path,
+                "methods": list(route.methods) if route.methods else ["GET"]
+            })
+    
+    return {
+        "total_routes": len(routes),
+        "routes": sorted(routes, key=lambda x: x["path"])
+    }
+
+# Improved 404 handler
+@app.exception_handler(404)
+async def custom_404_handler(request: Request, exc: HTTPException):
+    """Custom 404 handler with better error information"""
+    logger.warning(f"404 - Path not found: {request.method} {request.url.path}")
+    
+    # Provide helpful suggestions for common mistakes
+    suggestions = []
+    path = request.url.path
+    
+    if path.startswith("/api/schemas"):
+        suggestions.append("Try /api/database/schemas instead")
+    elif path.startswith("/database/schemas"):
+        suggestions.append("Try /api/database/schemas instead")
+    elif not path.startswith("/api/") and path not in ["/", "/health", "/docs", "/openapi.json"]:
+        suggestions.append(f"Try /api{path} instead")
+    
     return JSONResponse(
         status_code=404,
-        content={"error": "Route not found", "path": path, "method": request.method}
+        content={
+            "error": "Route not found",
+            "path": path,
+            "method": request.method,
+            "suggestions": suggestions,
+            "available_endpoints": [
+                "/health",
+                "/api/auth/login",
+                "/api/auth/verify", 
+                "/api/database/schemas/connection",
+                "/api/database/schemas",
+                "/debug/routes"
+            ]
+        }
     )
 
 
