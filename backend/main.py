@@ -1,6 +1,6 @@
 """
 VAST Services MVP - Python Backend
-Main FastAPI application with improved routing and error handling
+Fixed main FastAPI application with proper router registration and error handling
 """
 
 from fastapi import FastAPI, HTTPException, Request
@@ -48,7 +48,9 @@ app = FastAPI(
     title="VAST Services Backend",
     description="Backend API for VAST Services MVP",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # CORS Configuration
@@ -75,7 +77,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if settings.NODE_ENV == "development" else origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600,
@@ -92,8 +94,9 @@ try:
     
     app.add_middleware(RateLimiterMiddleware, calls=100, period=900)
     setup_exception_handlers(app)
+    logger.info("✅ Middleware configured")
 except ImportError as e:
-    logger.warning(f"Could not import middleware: {e}")
+    logger.warning(f"⚠️  Could not import middleware: {e}")
 
 # Health check endpoint
 @app.get("/health")
@@ -121,7 +124,9 @@ async def root():
         "endpoints": {
             "health": "/health",
             "auth": "/api/auth/*", 
-            "database_schemas": "/api/database/schemas/*"
+            "database_schemas": "/api/database/schemas/*",
+            "docs": "/docs",
+            "debug_routes": "/debug/routes"
         }
     }
 
@@ -135,7 +140,7 @@ async def cors_test():
         "origin_allowed": True
     }
 
-# Preflight handlers
+# Preflight handlers for CORS
 @app.options("/api/{full_path:path}")
 async def api_options_handler(request: Request, full_path: str):
     """Handle CORS preflight requests for API routes"""
@@ -143,7 +148,7 @@ async def api_options_handler(request: Request, full_path: str):
         status_code=200,
         headers={
             "Access-Control-Allow-Origin": "*" if settings.NODE_ENV == "development" else request.headers.get("origin", "*"),
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
             "Access-Control-Max-Age": "3600",
@@ -157,7 +162,7 @@ async def options_handler(request: Request, full_path: str):
         status_code=200,
         headers={
             "Access-Control-Allow-Origin": "*" if settings.NODE_ENV == "development" else request.headers.get("origin", "*"),
-            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+            "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS, PATCH, HEAD",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Credentials": "true",
             "Access-Control-Max-Age": "3600",
@@ -165,36 +170,61 @@ async def options_handler(request: Request, full_path: str):
     )
 
 # Import and include routers with improved error handling
+routers_loaded = []
+
+# Auth router
 try:
     from controllers.auth_controller import router as auth_router
     app.include_router(auth_router, prefix="/api/auth", tags=["authentication"])
-    logger.info("✅ Auth controller loaded")
+    logger.info("✅ Auth controller loaded at /api/auth")
+    routers_loaded.append("auth")
 except ImportError as e:
     logger.error(f"❌ Failed to load auth controller: {e}")
+except Exception as e:
+    logger.error(f"❌ Error loading auth controller: {e}")
 
-# Try to load schema controller with better error handling
-schema_router_loaded = False
+# Schema router - with explicit debugging
 try:
     from controllers.schema_controller import router as schema_router
-    app.include_router(schema_router, prefix="/api/database/schemas", tags=["database", "schemas"])
+    
+    # Add the router
+    app.include_router(
+        schema_router, 
+        prefix="/api/database/schemas", 
+        tags=["database", "schemas"]
+    )
+    
     logger.info("✅ Schema controller loaded at /api/database/schemas")
+    logger.info(f"   📋 Schema router has {len(schema_router.routes)} routes")
+    
+    # Log each route for debugging
+    for route in schema_router.routes:
+        if hasattr(route, 'methods') and hasattr(route, 'path'):
+            logger.info(f"   🔗 Route: {list(route.methods)} {route.path}")
+    
+    routers_loaded.append("schemas")
     schema_router_loaded = True
+    
 except ImportError as e:
-    logger.error(f"❌ Failed to load schema controller: {e}")
+    logger.error(f"❌ Failed to import schema controller: {e}")
+    schema_router_loaded = False
 except Exception as e:
     logger.error(f"❌ Error loading schema controller: {e}")
+    schema_router_loaded = False
 
 # Create fallback routes if schema controller failed to load
 if not schema_router_loaded:
+    logger.warning("⚠️  Creating fallback schema endpoints...")
+    
     from fastapi import APIRouter
     from config import get_vast_connection_info
     
     # Create minimal schema router
-    minimal_router = APIRouter()
+    minimal_router = APIRouter(tags=["database-fallback"])
     
     @minimal_router.get("/connection")
     async def get_connection_status():
-        """Get VAST Database connection status"""
+        """Get VAST Database connection status - FALLBACK"""
         vast_info = get_vast_connection_info()
         return {
             "success": vast_info.get("configured", False),
@@ -208,7 +238,7 @@ if not schema_router_loaded:
     
     @minimal_router.get("/")
     async def list_schemas_minimal():
-        """List schemas - minimal implementation"""
+        """List schemas - FALLBACK implementation"""
         vast_info = get_vast_connection_info()
         if not vast_info.get("configured"):
             return {
@@ -227,15 +257,15 @@ if not schema_router_loaded:
     
     @minimal_router.post("/")
     async def create_schema_minimal():
-        """Create schema - minimal implementation"""
+        """Create schema - FALLBACK implementation"""
         return {
             "success": False,
             "message": "Schema creation not available - schema controller failed to load"
         }
     
-    @minimal_router.get("/health")
+    @minimal_router.get("/health/schemas")
     async def schemas_health_minimal():
-        """Health check - minimal implementation"""
+        """Health check - FALLBACK implementation"""
         vast_info = get_vast_connection_info()
         return {
             "status": "service_unavailable",
@@ -246,24 +276,36 @@ if not schema_router_loaded:
     
     # Include minimal router
     app.include_router(minimal_router, prefix="/api/database/schemas", tags=["database", "schemas"])
-    logger.info("⚠️  Minimal schema controller loaded at /api/database/schemas")
+    logger.info("⚠️  Fallback schema controller loaded at /api/database/schemas")
+    routers_loaded.append("schemas-fallback")
 
-# Add a debug route to show all registered routes
+# Debug route to show all registered routes
 @app.get("/debug/routes")
 async def debug_routes():
     """Debug endpoint to show all registered routes"""
     routes = []
     for route in app.routes:
-        if hasattr(route, 'path') and hasattr(route, 'methods'):
-            routes.append({
-                "path": route.path,
-                "methods": list(route.methods) if route.methods else ["GET"]
-            })
+        route_info = {
+            "path": route.path,
+            "name": getattr(route, 'name', None),
+            "methods": list(getattr(route, 'methods', [])) if hasattr(route, 'methods') else ["N/A"]
+        }
+        
+        # Add additional info if available
+        if hasattr(route, 'endpoint'):
+            route_info["endpoint"] = str(route.endpoint)
+        if hasattr(route, 'tags'):
+            route_info["tags"] = route.tags
+            
+        routes.append(route_info)
     
     return {
         "total_routes": len(routes),
-        "routes": sorted(routes, key=lambda x: x["path"])
+        "routers_loaded": routers_loaded,
+        "routes": sorted(routes, key=lambda x: x["path"]),
+        "schema_routes": [r for r in routes if "/api/database/schemas" in r["path"]]
     }
+
 
 # Improved 404 handler
 @app.exception_handler(404)
@@ -299,6 +341,38 @@ async def custom_404_handler(request: Request, exc: HTTPException):
             ]
         }
     )
+
+
+# Add a route specifically to test schema endpoints
+@app.get("/test/schema-routes")
+async def test_schema_routes():
+    """Test endpoint to verify schema routes are working"""
+    schema_routes = []
+    
+    for route in app.routes:
+        if "/api/database/schemas" in route.path:
+            schema_routes.append({
+                "path": route.path,
+                "methods": list(getattr(route, 'methods', [])),
+                "name": getattr(route, 'name', None),
+                "endpoint": str(getattr(route, 'endpoint', None))
+            })
+    
+    return {
+        "message": "Schema routes test",
+        "total_schema_routes": len(schema_routes),
+        "schema_routes": schema_routes,
+        "expected_routes": [
+            "GET /api/database/schemas/",
+            "POST /api/database/schemas/",
+            "GET /api/database/schemas/connection",
+            "GET /api/database/schemas/{name}",
+            "DELETE /api/database/schemas/{name}",
+            "GET /api/database/schemas/{name}/tables",
+            "POST /api/database/schemas/{name}/tables",
+            "GET /api/database/schemas/health/schemas"
+        ]
+    }
 
 
 if __name__ == "__main__":

@@ -1,5 +1,6 @@
 """
-Schema controller for database schema management with improved error handling
+Schema controller for database schema management - FIXED VERSION
+Addresses the 405 Method Not Allowed error
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Path
@@ -17,13 +18,14 @@ from models import (
 )
 from middleware.auth_middleware import get_current_user
 
-router = APIRouter()
+# Create router with explicit tags
+router = APIRouter(tags=["schemas", "database"])
 logger = logging.getLogger(__name__)
 
 
-@router.get("/connection")
+@router.get("/connection", summary="Get VAST Database connection status")
 async def get_connection_info(user: Dict[str, Any] = Depends(get_current_user)):
-    """Get VAST Database connection status"""
+    """Get VAST Database connection status and configuration"""
     try:
         from config import get_vast_connection_info
         connection_info = get_vast_connection_info()
@@ -75,9 +77,9 @@ async def get_connection_info(user: Dict[str, Any] = Depends(get_current_user)):
         }
 
 
-@router.get("/")
+@router.get("/", summary="List all database schemas")
 async def list_schemas(user: Dict[str, Any] = Depends(get_current_user)):
-    """List all database schemas"""
+    """List all database schemas in the configured bucket"""
     try:
         from config import get_vast_connection_info
         connection_info = get_vast_connection_info()
@@ -139,12 +141,12 @@ async def list_schemas(user: Dict[str, Any] = Depends(get_current_user)):
         )
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", status_code=status.HTTP_201_CREATED, summary="Create a new database schema")
 async def create_schema(
     request: CreateSchemaRequest,
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Create a new database schema"""
+    """Create a new database schema with the given name and optional description"""
     try:
         from config import get_vast_connection_info
         connection_info = get_vast_connection_info()
@@ -208,12 +210,12 @@ async def create_schema(
         )
 
 
-@router.get("/{name}")
+@router.get("/{name}", summary="Get a specific schema")
 async def get_schema(
-    name: str = Path(..., min_length=1, max_length=64),
+    name: str = Path(..., min_length=1, max_length=64, description="Schema name"),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get a specific schema"""
+    """Get detailed information about a specific schema including its tables"""
     try:
         # Validate schema name format
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', name):
@@ -271,12 +273,12 @@ async def get_schema(
         )
 
 
-@router.delete("/{name}")
+@router.delete("/{name}", summary="Delete a schema")
 async def delete_schema(
-    name: str = Path(..., min_length=1, max_length=64),
+    name: str = Path(..., min_length=1, max_length=64, description="Schema name"),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Delete a schema"""
+    """Delete a schema and all its tables (irreversible operation)"""
     try:
         # Validate schema name format
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', name):
@@ -340,13 +342,13 @@ async def delete_schema(
         )
 
 
-@router.post("/{name}/tables", status_code=status.HTTP_201_CREATED)
+@router.post("/{name}/tables", status_code=status.HTTP_201_CREATED, summary="Create a table in a schema")
 async def create_table(
     request: CreateTableRequest,
-    name: str = Path(..., min_length=1, max_length=64),
+    name: str = Path(..., min_length=1, max_length=64, description="Schema name"),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Create a table in a schema"""
+    """Create a table in the specified schema with given columns"""
     try:
         # Validate schema name format
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', name):
@@ -414,12 +416,12 @@ async def create_table(
         )
 
 
-@router.get("/{name}/tables")
+@router.get("/{name}/tables", summary="List tables in a schema")
 async def list_tables(
-    name: str = Path(..., min_length=1, max_length=64),
+    name: str = Path(..., min_length=1, max_length=64, description="Schema name"),
     user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """List tables in a schema"""
+    """List all tables in the specified schema"""
     try:
         # Validate schema name format
         if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', name):
@@ -478,10 +480,9 @@ async def list_tables(
         )
 
 
-# Health check for database schemas service
-@router.get("/health")
+@router.get("/health/schemas", summary="Health check for schemas service")
 async def schemas_health():
-    """Health check for database schemas service"""
+    """Health check endpoint for the database schemas service"""
     try:
         from config import get_vast_connection_info
         connection_info = get_vast_connection_info()
@@ -527,3 +528,16 @@ async def schemas_health():
             "message": f"Health check failed: {str(e)}",
             "timestamp": time.time()
         }
+        
+    @router.get("", summary="List all database schemas (alternative)")
+    async def list_schemas_alt(user: Dict[str, Any] = Depends(get_current_user)):
+        """List all database schemas - alternative endpoint without trailing slash"""
+        return await list_schemas(user)
+
+    @router.post("", status_code=status.HTTP_201_CREATED, summary="Create schema (alternative)")
+    async def create_schema_alt(
+        request: CreateSchemaRequest,
+        user: Dict[str, Any] = Depends(get_current_user)
+    ):
+        """Create schema - alternative endpoint without trailing slash"""
+        return await create_schema(request, user)
